@@ -45,6 +45,9 @@ func (c *CDF) Histogram() *Histogram {
 
 	// assume points are sorted
 	for _, p := range c.Points {
+		if p == nil {
+			continue // skip nil points to avoid panic
+		}
 		hist.Enqueue(p.Value, 1)
 	}
 	c.histogram = hist

@@ -3,8 +3,6 @@ package histogram
 import (
 	"math"
 	"sync"
-	// "time"
-	// "uta.edu/aces/jade-go/kernel"
 	"strconv"
 	"fmt"
 	"log"
@@ -69,24 +67,12 @@ func NewHistogram(size int64, subBucketHistogramSize float64, accuracy int) *His
 }
 
 func (h *Histogram) GetWaterMark() float64 {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
 	if h.QueueSize <= 0 {
 		return float64(0)
 	}
 	return float64(h.Count)/float64(h.QueueSize)
-}
-
-func (h *Histogram) GetIndexOfSubHistogram(v float64) int {
-	idx, _, _ := h.BucketHistogram.CalcPosition(v)
-	return int(idx)
-}
-
-func (h *Histogram) GetLengthOfSubHistograms() int {
-	return len(h.BucketHistogram.SubBucketHistograms)
-}
-
-
-func (h *Histogram) GetMaximumSizeOfSubHistograms() int {
-	return int(math.Round(h.BucketHistogram.SubBucketHistogramSize*h.Accuracy))
 }
 
 func (h *Histogram) GetValueOfBucket(subhistogramIndex int, bucketIndex int) float64 {
@@ -94,16 +80,29 @@ func (h *Histogram) GetValueOfBucket(subhistogramIndex int, bucketIndex int) flo
 	return lower_boundary + float64(bucketIndex) * h.Accuracy
 }
 
+func (h *Histogram) GetLengthOfSubHistograms() int {
+	return len(h.BucketHistogram.SubBucketHistograms)
+}
+
+func (h *Histogram) GetMaximumSizeOfSubHistograms() int {
+	return int(math.Round(h.BucketHistogram.SubBucketHistogramSize*h.Accuracy))
+}
+
+func (h *Histogram) GetIndexOfSubHistogram(v float64) int {
+	idx, _, _ := h.BucketHistogram.CalcPosition(v)
+	return int(idx)
+}
 
 
 func (h *Histogram) UnifiedValue(value float64) float64 {
 	v := value
-
 	v = math.Round(v* h.Accuracy)/h.Accuracy
 	return v
 }
 
 func (h *Histogram) AddPercentilePoint(p float64) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
 	item := NewPercentileItem(p)
 	if h.Percentiles == nil {
 		h.Percentiles = make(map[string]*PercentileItem)
@@ -121,6 +120,8 @@ func (h *Histogram) GetPercentileItem(p float64) *PercentileItem {
 }
 
 func (h *Histogram) GetValueAtPercentile(p float64) float64 {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
 	percentileItem := h.GetPercentileItem(p)
 	if percentileItem != nil && percentileItem.Item != nil {
 		return percentileItem.Item.Value
@@ -130,6 +131,8 @@ func (h *Histogram) GetValueAtPercentile(p float64) float64 {
 }
 
 func (h *Histogram) GetPercentileForValue(v float64) float64 {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
 	item := h.RootItem.FindNoLargerThan(v)
 	if item.Count == 0 {
 		return 0
@@ -167,9 +170,6 @@ func (h *Histogram) Enqueue(incomingValue float64, count int) *HistogramItem{
 
 		total_count := float64(h.RootItem.Count)
 		for _, p := range h.Percentiles {
-			
-			// before_v:=p.Item.Value
-
 			if v <= p.Item.Value {
 				p.Count += 1
 				percentValue := float64(p.Count)/total_count
@@ -184,7 +184,7 @@ func (h *Histogram) Enqueue(incomingValue float64, count int) *HistogramItem{
 				percentValue := float64(p.Count)/total_count
 				p.RealPercentage = percentValue
 				for x:=p.Item.Larger; x != nil && percentValue < p.Percentile; x=x.Larger {
-					percentValue = float64(p.Count + x.Duplications)/total_count
+					percentValue := float64(p.Count + x.Duplications)/total_count
 					if percentValue <= p.Percentile {
 						p.Item = x
 						p.Count += x.Duplications
@@ -192,26 +192,7 @@ func (h *Histogram) Enqueue(incomingValue float64, count int) *HistogramItem{
 					}
 				}
 			}
-
-			// after_v:=p.Item.Value
-			// smaller_v:=float64(-1)
-			// if p.Item.Smaller !=nil {
-			// 	smaller_v = p.Item.Smaller.Value
-			// }
-			// larger_v:=float64(-1)
-			// if p.Item.Larger !=nil {
-			// 	larger_v = p.Item.Larger.Value
-			// }
-			// if before_v != after_v {
-			// 	cc := p.Item.CumulativeCount()
-			// 	log.Printf("inserted item %v, before %v, after: %v, smaller: %v, larger: %v,    percentile: %v, real: %v(%v/%v)[%v]", 
-			// 		v, before_v, after_v, smaller_v, larger_v,
-			// 		p.Percentile, float64(cc)/float64(h.RootItem.Count), 
-			// 		cc, total_count, p.RealPercentage,
-			// 	)	
-			// }
 		}
-		
 	} else {
 		item = NewHistogramItem(v)
 		h.RootItem = item
@@ -235,18 +216,82 @@ func (h *Histogram) Enqueue(incomingValue float64, count int) *HistogramItem{
 	countPre := h.Count
 	h.Count += int64(count)
 	meanPre := h.Mean
-	h.Mean = (h.Mean * float64(countPre) + v*float64(count)) / float64(h.Count)
-
-	a := float64(countPre)/float64(h.Count)*h.Variance
-	b := float64(countPre)/float64(h.Count)*math.Pow(h.Mean - meanPre, 2)
-	c := float64(int64(count))/float64(h.Count)*math.Pow(v - h.Mean, 2)
-
-	h.Variance = a + b + c
+	if h.Count > 0 {
+		h.Mean = (h.Mean * float64(countPre) + v*float64(count)) / float64(h.Count)
+	} else {
+		h.Mean = 0
+	}
+	if h.Count > 0 {
+		a := float64(countPre)/float64(h.Count)*h.Variance
+		b := float64(countPre)/float64(h.Count)*math.Pow(h.Mean - meanPre, 2)
+		c := float64(int64(count))/float64(h.Count)*math.Pow(v - h.Mean, 2)
+		h.Variance = a + b + c
+	} else {
+		h.Variance = 0
+	}
 
 	for h.QueueSize > 0 && h.Count > h.QueueSize {
 		result = h.Dequeue()
 	}
 	return result
+}
+
+// findItemAtRank finds the item at the given rank (0-based)
+func (h *Histogram) findItemAtRank(targetRank float64) *HistogramItem {
+	if h.RootItem == nil {
+		return nil
+	}
+	
+	// Use iterative inorder traversal to find the exact rank
+	var currentRank float64 = 0
+	
+	// Stack for iterative traversal
+	stack := []*HistogramItem{}
+	current := h.RootItem
+	
+	for current != nil || len(stack) > 0 {
+		// Go to leftmost node
+		for current != nil {
+			stack = append(stack, current)
+			current = current.Smaller
+		}
+		
+		// Process current node
+		current = stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		
+		// Check if target rank falls within current node's duplications
+		if currentRank <= targetRank && targetRank < currentRank + float64(current.Duplications) {
+			return current
+		}
+		
+		// Move to next position
+		currentRank += float64(current.Duplications)
+		
+		// Move to right subtree
+		current = current.Larger
+	}
+	
+	return nil
+}
+
+// calculateCumulativeCount calculates the cumulative count up to the given item
+func (h *Histogram) calculateCumulativeCount(item *HistogramItem) int64 {
+	if item == nil {
+		return 0
+	}
+	
+	var count int64 = 0
+	
+	// Add count from left subtree
+	if item.Smaller != nil {
+		count += item.Smaller.Count
+	}
+	
+	// Add duplications from current item
+	count += item.Duplications
+	
+	return count
 }
 
 // the complexity of Dequeue shall be no larger than O(log n)
@@ -347,13 +392,19 @@ func (h *Histogram) Dequeue() *HistogramItem {
 
 	if item != nil && h.Count > 0 {
 		meanPre := h.Mean
-		h.Mean = (h.Mean * float64(h.Count+1) - item.Value) / float64(h.Count)
-
-		a := float64(h.Count+1)/float64(h.Count)*h.Variance
-		b := math.Pow(meanPre - h.Mean, 2)
-		c := float64(1)/float64(h.Count)*math.Pow(item.Value - meanPre, 2)
-
-		h.Variance = a - b - c
+		if h.Count > 0 {
+			h.Mean = (h.Mean * float64(h.Count+1) - item.Value) / float64(h.Count)
+		} else {
+			h.Mean = 0
+		}
+		if h.Count > 0 {
+			a := float64(h.Count+1)/float64(h.Count)*h.Variance
+			b := math.Pow(meanPre - h.Mean, 2)
+			c := float64(1)/float64(h.Count)*math.Pow(item.Value - meanPre, 2)
+			h.Variance = a - b - c
+		} else {
+			h.Variance = 0
+		}
 	} else if item != nil && h.Count == 0 {
 		h.Mean = 0
 		h.Variance = 0

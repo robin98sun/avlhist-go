@@ -24,46 +24,56 @@ func NewSubBucketHistogram(unit float64, lower float64, upper float64) *SubBucke
 }
 
 func (sb *SubBucketHistogram) CalcPosition(v float64) int64 {
-    if sb.BucketSize == 0 {
-        return int64(-1)
-    }
-    idx_value := (v-sb.LowerBoundary)/sb.BucketSize
-    if math.Abs(sb.BucketSize) < 1 {
-        idx_value = math.Round(idx_value)
-    }
-    idx := int64(idx_value)
-
-    // log.Printf("     ....v: %v, bucket size: %v, lower boundary: %v, idx_value: %v, idx: %v", v, sb.BucketSize, sb.LowerBoundary, idx_value, idx)
-    return idx
+	if sb.BucketSize == 0 {
+		return int64(-1)
+	}
+	idx_value := (v-sb.LowerBoundary)/sb.BucketSize
+	if math.Abs(sb.BucketSize) < 1 {
+		idx_value = math.Round(idx_value)
+	}
+	idx := int64(idx_value)
+	if idx < 0 {
+		return int64(-1) // signal invalid/negative index
+	}
+	return idx
 }
+
+const maxBucketIndex = 100000 // reasonable upper bound for bucket indices
 
 func (sb *SubBucketHistogram) Insert(n *HistogramItem) {
 
-    if n == nil {return}
+	if n == nil {return}
 
-    if sb.BucketList == nil {
-        sb.BucketList = []*HistogramItem{}
-    }
+	if sb.BucketList == nil {
+		sb.BucketList = []*HistogramItem{}
+	}
 
-    idx := sb.CalcPosition(n.Value)
+	idx := sb.CalcPosition(n.Value)
+	if idx < 0 || idx > maxBucketIndex {
+		// Do not insert if index is negative or too large
+		return
+	}
 
-    cur_len := int64(len(sb.BucketList))
-    for i:=int64(0);i<idx-cur_len+1;i++{
-        sb.BucketList = append(sb.BucketList, nil)
-    }
-    if sb.BucketList[idx] != nil {
-        log.Printf("bucket is not empty for %v, there exists %v", n.Value, sb.BucketList[idx].Value)
-        log.Printf("    bucket list length: %v, index: %v", len(sb.BucketList), idx)
-    }
-    sb.BucketList[idx] = n
+	cur_len := int64(len(sb.BucketList))
+	for i:=int64(0);i<idx-cur_len+1;i++{
+		sb.BucketList = append(sb.BucketList, nil)
+	}
+	if sb.BucketList[idx] != nil {
+		log.Printf("bucket is not empty for %v, there exists %v", n.Value, sb.BucketList[idx].Value)
+		log.Printf("    bucket list length: %v, index: %v", len(sb.BucketList), idx)
+	}
+	sb.BucketList[idx] = n
 }
 
 func (sb *SubBucketHistogram) Delete(n *HistogramItem) {
-    if n == nil {return}
-    idx := sb.CalcPosition(n.Value)
-    if idx < int64(len(sb.BucketList)) {
-        sb.BucketList[idx] = nil
-    }
+	if n == nil {return}
+	idx := sb.CalcPosition(n.Value)
+	if idx < 0 {
+		return
+	}
+	if idx < int64(len(sb.BucketList)) {
+		sb.BucketList[idx] = nil
+	}
 }
 
 // Top level bucket histogram
