@@ -450,7 +450,19 @@ See the `examples/` directory for complete usage examples.
 
 ## License
 
-[Add your license information here]
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### License Summary
+- **Type**: MIT License
+- **Year**: 2024
+- **Copyright Holder**: Robin Sun
+- **Permissions**: Use, modify, distribute, and commercial use
+- **Limitations**: None (very permissive)
+- **Liability**: No warranty provided
+
+The MIT License is one of the most popular open-source licenses, providing maximum freedom while requiring only that the license and copyright notice be preserved in distributions.
 
 ## Performance Evaluation Summary
 
