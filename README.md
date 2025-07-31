@@ -456,7 +456,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### License Summary
 - **Type**: MIT License
-- **Year**: 2024
+- **Year**: 2022-2025
 - **Copyright Holder**: Robin Sun
 - **Permissions**: Use, modify, distribute, and commercial use
 - **Limitations**: None (very permissive)
